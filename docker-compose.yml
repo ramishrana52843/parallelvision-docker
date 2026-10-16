@@ -1,0 +1,63 @@
+# ParallelVision - Part I stack: web app + MySQL database
+#
+#   docker compose up -d        start everything (pulls the image from Docker Hub)
+#   docker compose ps           show the containers and their health
+#   docker compose logs -f web  follow the application log
+#   docker compose down         stop and remove the containers (the DATA is kept)
+#   docker compose down -v      ...and also delete the database volume (DATA IS LOST)
+#
+# Values like ${MYSQL_PASSWORD} are read from the file named ".env" (see .env.example).
+
+name: parallelvision
+
+services:
+  # ------------------------------------------------------------ database
+  db:
+    image: mysql:8.4
+    container_name: pv_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-parallelvision}
+      MYSQL_USER: ${MYSQL_USER:-appuser}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
+    # keep MySQL small enough for a small EC2 instance
+    command:
+      - --performance-schema=OFF
+      - --innodb-buffer-pool-size=128M
+      - --max-connections=50
+    volumes:
+      # NAMED VOLUME: the database files live here, outside the container,
+      # so the data survives when the container is removed or recreated.
+      - pv_mysql_data:/var/lib/mysql
+    ports:
+      # published on the server itself only (127.0.0.1), not on the internet
+      - "127.0.0.1:${DB_HOST_PORT:-3306}:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  # ------------------------------------------------------------ web app
+  web:
+    # the image built from the Dockerfile and pushed to Docker Hub
+    image: ${DOCKERHUB_USER:?set DOCKERHUB_USER in .env}/parallelvision:${IMAGE_TAG:-1.0}
+    container_name: pv_web
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy     # start the app only after MySQL is ready
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      S3_BUCKET: ${S3_BUCKET:-}
+      AWS_REGION: ${AWS_REGION:-eu-north-1}
+      # "db" is the service name above: containers reach each other by that name
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-appuser}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-parallelvision}
+    ports:
+      - "${WEB_PORT:-80}:8000"         # host port : container port
+
+# declares the named volume used above
+volumes:
+  pv_mysql_data:

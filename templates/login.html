@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Log in — ParallelVision{% endblock %}
+{% block body %}
+<header class="top"><div class="brand">PARALLEL VISION<small>PDC IMAGE PROCESSING ENGINE</small></div></header>
+<div class="card auth-card">
+  <h2>LOG IN</h2>
+  <p class="sub">Sign in to process images and open your cloud gallery.</p>
+  {% include "_flash.html" %}
+  <form method="post">
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" value="{{ email }}" required autofocus>
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" required>
+    <button class="btn solid" type="submit">LOG IN</button>
+  </form>
+  <div class="alt">No account? <a href="{{ url_for('auth.register') }}">Create one</a></div>
+</div>
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Verify email — ParallelVision{% endblock %}
+{% block body %}
+<header class="top"><div class="brand">PARALLEL VISION<small>PDC IMAGE PROCESSING ENGINE</small></div></header>
+<div class="card auth-card">
+  <h2>VERIFY YOUR EMAIL</h2>
+  <p class="sub">We sent a 6-digit code to <strong>{{ email }}</strong>.</p>
+  {% include "_flash.html" %}
+  <form method="post">
+    <label for="code">Verification code</label>
+    <input type="text" id="code" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autofocus>
+    <button class="btn solid" type="submit">VERIFY</button>
+  </form>
+  <form method="post" action="{{ url_for('auth.verify_resend') }}">
+    <button class="btn" type="submit">RESEND CODE</button>
+  </form>
+</div>
+{% endblock %}

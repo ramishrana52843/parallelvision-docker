@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}My Cloud Gallery — ParallelVision{% endblock %}
+{% block body %}
+<header class="top">
+  <div class="brand">PARALLEL VISION<small>MY CLOUD GALLERY</small></div>
+  <nav class="right">
+    <a class="btn small" href="{{ url_for('index') }}">← PROCESSOR</a>
+    <span class="who">{{ user_email }}</span>
+    <form method="post" action="{{ url_for('auth.logout') }}"><button class="btn small" type="submit">LOG OUT</button></form>
+  </nav>
+</header>
+
+<div class="s3-hero">
+  <div class="s3-hero-ico">☁</div>
+  <div class="s3-hero-text">
+    <div class="s3-hero-title">STORED IN AMAZON S3</div>
+    <div class="s3-hero-sub">Bucket <code>{{ bucket or 'not configured' }}</code> · region <code>{{ region }}</code> · private, per-user folders · metadata in Amazon RDS</div>
+  </div>
+  <div class="s3-hero-count"><strong>{{ items|length }}</strong><span>IMAGES</span></div>
+</div>
+
+{% include "_flash.html" %}
+
+{% if not s3_enabled %}
+  <div class="empty">S3 is not configured (S3_BUCKET is not set), so nothing can be saved.</div>
+{% elif not items %}
+  <div class="empty">Nothing saved yet. Process some images with “Save results to my cloud gallery” switched on.</div>
+{% else %}
+<div class="grid">
+  {% for it in items %}
+  <div class="tile">
+    <div class="lbl"><span>ORIGINAL</span><span>PROCESSED</span></div>
+    <div class="pair">
+      <a href="{{ it.original_url }}" target="_blank" rel="noopener">
+        <img src="{{ it.original_thumb }}" alt="original" loading="lazy" decoding="async" width="240" height="150"
+             onerror="this.onerror=null;this.src='{{ it.original_url }}'">
+      </a>
+      <a href="{{ it.result_url }}" target="_blank" rel="noopener">
+        <img src="{{ it.result_thumb }}" alt="processed" loading="lazy" decoding="async" width="240" height="150"
+             onerror="this.onerror=null;this.src='{{ it.result_url }}'">
+      </a>
+    </div>
+    <div class="meta">
+      <div class="name">{{ it.name }}</div>
+      <div class="ops">{{ it.ops or '—' }}</div>
+      <div>{{ it.size }}{% if it.ms %} · {{ it.ms }}ms{% endif %} · {{ it.created }}</div>
+      <div class="s3uri" title="{{ it.s3_uri }}">☁ {{ it.s3_uri }}</div>
+    </div>
+    <div class="actions">
+      <a class="btn small" href="{{ it.download_url }}">⬇ DOWNLOAD</a>
+      <form method="post" action="{{ url_for('gallery_delete', image_id=it.id) }}"
+            onsubmit="return confirm('Delete this image from S3?');">
+        <button class="btn small danger" type="submit">DELETE</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% if items|length >= 48 %}<p class="empty">Showing the 48 most recent images.</p>{% endif %}
+{% endif %}
+{% endblock %}

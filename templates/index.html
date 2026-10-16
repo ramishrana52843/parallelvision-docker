@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ParallelVision — PDC Image Processor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* ═══════════════════════════════════════════════════
+   DESIGN SYSTEM — Industrial HPC Control Panel
+   Dark gunmetal + electric cyan + amber accent
+   ═════════════════════════════════════════════════ */
+:root {
+  --bg-void:      #060810;
+  --bg-base:      #0d1117;
+  --bg-panel:     #111821;
+  --bg-card:      #161e2a;
+  --bg-input:     #0d1520;
+  --border:       #1e2d3d;
+  --border-glow:  #00d4ff33;
+  --cyan:         #00d4ff;
+  --cyan-dim:     #00d4ff66;
+  --cyan-dark:    #003d4d;
+  --amber:        #ffb300;
+  --amber-dim:    #ffb30066;
+  --green:        #00e676;
+  --red:          #ff1744;
+  --purple:       #b388ff;
+  --text-primary: #e0eaf5;
+  --text-dim:     #5a7a99;
+  --text-ghost:   #2a3d50;
+  --mono:         'Space Mono', monospace;
+  --sans:         'Rajdhani', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg-void);
+  color: var(--text-primary);
+  font-family: var(--sans);
+  font-size: 15px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Noise overlay */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none; z-index: 0;
+}
+
+/* ── SCANLINE effect ── */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.04) 2px, rgba(0,0,0,.04) 4px);
+  pointer-events: none; z-index: 0;
+}
+
+.app { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; padding: 0 24px 80px; }
+
+/* ── HEADER ── */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 24px 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+.logo { display: flex; align-items: center; gap: 14px; }
+.logo-icon {
+  width: 40px; height: 40px;
+  background: linear-gradient(135deg, var(--cyan), var(--purple));
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  display: flex; align-items: center; justify-content: center;
+  animation: pulse-hex 3s ease-in-out infinite;
+}
+@keyframes pulse-hex { 0%,100%{opacity:1} 50%{opacity:.7} }
+.logo h1 { font-family: var(--mono); font-size: 18px; font-weight:700; color: var(--cyan); letter-spacing: 2px; }
+.logo span { font-size: 11px; font-family: var(--mono); color: var(--text-dim); display: block; letter-spacing: 3px; }
+.header-stats { display: flex; gap: 24px; }
+.stat { text-align: right; }
+.stat-val { font-family: var(--mono); font-size: 20px; color: var(--amber); }
+.stat-label { font-size: 10px; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase; }
+.user-nav { padding-left: 24px; border-left: 1px solid var(--border); }
+.user-email { font-family: var(--mono); font-size: 12px; color: var(--text-primary); }
+.user-links { display: flex; gap: 14px; justify-content: flex-end; margin-top: 4px; align-items: center; }
+.user-links a, .user-links button {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 2px; color: var(--cyan);
+  background: none; border: none; cursor: pointer; text-decoration: none; padding: 0;
+}
+.user-links a:hover, .user-links button:hover { text-decoration: underline; }
+.user-links form { display: inline; }
+.user-nav { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.gallery-cta {
+  display: inline-flex; align-items: center; gap: 10px; padding: 11px 20px;
+  background: linear-gradient(135deg, #ffb300, #ff8f00); color: #1a1000; text-decoration: none;
+  font-family: var(--mono); font-weight: 700; font-size: 14px; letter-spacing: 2px; border-radius: 4px;
+  box-shadow: 0 0 18px rgba(255,179,0,.45); transition: transform .15s, box-shadow .15s;
+}
+.gallery-cta:hover { transform: translateY(-1px); box-shadow: 0 0 28px rgba(255,179,0,.7); }
+.gallery-cta .cta-ico { font-size: 22px; line-height: 1; }
+.s3-badge { background: #1a1000; color: #ffb300; font-size: 10px; padding: 3px 7px; border-radius: 3px; letter-spacing: 1px; }
+.user-line { display: flex; align-items: center; gap: 12px; }
+.user-line form { display: inline; }
+.user-line button { font-family: var(--mono); font-size: 10px; letter-spacing: 2px; color: var(--cyan); background: none; border: none; cursor: pointer; padding: 0; }
+.user-line button:hover { text-decoration: underline; }
+.services { display: flex; gap: 10px; font-family: var(--mono); font-size: 12px; margin-top: 4px; }
+.svc { color: var(--text-dim); }
+.svc.ok { color: var(--green); }
+.svc.bad { color: var(--red); }
+
+.cloud-save {
+  position: relative; display: flex; align-items: center; gap: 14px; margin-top: 14px; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: 4px; cursor: pointer; background: var(--bg-input);
+  transition: border-color .2s, box-shadow .2s, background .2s;
+}
+.cloud-save:has(input:checked) { border-color: var(--amber); background: rgba(255,179,0,.08); box-shadow: 0 0 16px rgba(255,179,0,.22); }
+.cloud-save input { position: absolute; opacity: 0; pointer-events: none; }
+.cs-switch { flex: none; width: 42px; height: 22px; border-radius: 22px; background: var(--border); position: relative; transition: background .2s; }
+.cs-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s; }
+.cloud-save input:checked + .cs-switch { background: var(--amber); }
+.cloud-save input:checked + .cs-switch::after { transform: translateX(20px); }
+.cloud-save.disabled { opacity: .5; cursor: not-allowed; }
+.cs-text strong { display: block; font-family: var(--mono); font-size: 12px; letter-spacing: 1px; color: var(--amber); }
+.cs-text small { display: block; margin-top: 3px; font-size: 12px; color: var(--text-dim); word-break: break-all; }
+.cs-text code { font-family: var(--mono); font-size: 11px; color: var(--text-primary); }
+
+.cloud-banner {
+  display: none; align-items: center; gap: 14px; padding: 14px 18px; margin-bottom: 16px; border-radius: 4px;
+  border: 1px solid var(--amber); background: linear-gradient(90deg, rgba(255,179,0,.16), rgba(255,179,0,.03));
+  box-shadow: 0 0 20px rgba(255,179,0,.15); font-family: var(--mono); font-size: 12px; color: var(--text-primary);
+}
+.cloud-banner .cb-ico { font-size: 28px; color: var(--amber); }
+.cloud-banner .cb-main { flex: 1; min-width: 0; line-height: 1.6; }
+.cloud-banner strong { color: var(--amber); letter-spacing: 1px; }
+.cloud-banner a { color: #1a1000; background: var(--amber); padding: 8px 14px; border-radius: 3px; text-decoration: none; font-weight: 700; letter-spacing: 1px; white-space: nowrap; }
+.cloud-banner.error { border-color: var(--red); background: rgba(255,23,68,.08); box-shadow: none; }
+.cloud-banner.error .cb-ico, .cloud-banner.error strong { color: var(--red); }
+.s3-chip { margin: 0 12px 8px; font-family: var(--mono); font-size: 9px; color: var(--amber); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+a.download-btn { display: inline-block; text-decoration: none; }
+
+/* ── LAYOUT ── */
+.layout { display: grid; grid-template-columns: 340px 1fr; gap: 20px; margin-top: 20px; }
+
+/* ── PANEL BASE ── */
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+}
+.panel::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+}
+.panel-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--text-dim);
+}
+.panel-header .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--cyan); box-shadow: 0 0 8px var(--cyan);
+}
+.panel-body { padding: 18px; }
+
+/* ── DROP ZONE ── */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 4px; padding: 32px;
+  text-align: center; cursor: pointer;
+  transition: all .2s;
+  background: var(--bg-input);
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--cyan); background: var(--cyan-dark);
+  box-shadow: 0 0 20px var(--cyan-dim);
+}
+.drop-zone .icon { font-size: 32px; margin-bottom: 10px; }
+.drop-zone p { font-size: 13px; color: var(--text-dim); font-family: var(--mono); }
+.drop-zone strong { color: var(--cyan); }
+#file-input { display: none; }
+
+.file-list { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.file-chip {
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: 3px; padding: 6px 12px;
+  display: flex; align-items: center; justify-content: space-between;
+  font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+}
+.file-chip .thumb {
+  width: 28px; height: 28px; border-radius: 2px; object-fit: cover;
+  margin-right: 8px;
+}
+.file-chip-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.remove-btn { background: none; border: none; color: var(--red); cursor: pointer; font-size: 14px; padding: 0 4px; }
+
+/* ── SECTION LABELS ── */
+.section-label {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 3px;
+  text-transform: uppercase; color: var(--text-dim);
+  margin: 18px 0 10px;
+  display: flex; align-items: center; gap: 8px;
+}
+.section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ── FILTER GRID ── */
+.filter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.filter-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 3px; padding: 10px 12px; cursor: pointer;
+  transition: all .15s; user-select: none;
+  position: relative;
+}
+.filter-card:hover { border-color: var(--cyan-dim); }
+.filter-card.active {
+  border-color: var(--cyan);
+  background: var(--cyan-dark);
+  box-shadow: 0 0 12px var(--cyan-dim);
+}
+.filter-card input[type=checkbox] { display: none; }
+.filter-name { font-weight: 600; font-size: 13px; color: var(--text-primary); }
+.filter-icon { font-size: 18px; margin-bottom: 4px; }
+.filter-badge {
+  position: absolute; top: 6px; right: 8px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--cyan); box-shadow: 0 0 6px var(--cyan);
+  display: none;
+}
+.filter-card.active .filter-badge { display: block; }
+
+/* ── PARAM ROW ── */
+.param-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 8px; padding: 8px 10px;
+  background: var(--bg-input); border: 1px solid var(--border); border-radius: 3px;
+  font-family: var(--mono); font-size: 11px;
+}
+.param-row label { color: var(--text-dim); white-space: nowrap; min-width: 90px; }
+.param-row input[type=range] { flex: 1; accent-color: var(--cyan); }
+.param-val { color: var(--amber); min-width: 35px; text-align: right; }
+
+/* ── AUG GRID ── */
+.aug-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 7px; }
+.aug-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 3px; padding: 10px 8px; cursor: pointer;
+  text-align: center; transition: all .15s; user-select: none;
+}
+.aug-card:hover { border-color: var(--amber-dim); }
+.aug-card.active { border-color: var(--amber); background: #1a1400; box-shadow: 0 0 10px var(--amber-dim); }
+.aug-card input[type=checkbox] { display: none; }
+.aug-icon { font-size: 20px; display: block; margin-bottom: 4px; }
+.aug-name { font-size: 11px; font-family: var(--mono); color: var(--text-dim); }
+.aug-card.active .aug-name { color: var(--amber); }
+
+/* ── WORKER POOL ── */
+.pool-config { display: flex; align-items: center; gap: 12px; }
+.worker-count { font-family: var(--mono); font-size: 28px; color: var(--cyan); min-width: 32px; }
+.pool-config input[type=range] { flex: 1; accent-color: var(--cyan); }
+.pool-viz { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 12px; }
+.worker-node {
+  width: 36px; height: 36px; border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 9px; color: var(--text-ghost);
+  transition: all .2s;
+  position: relative; overflow: hidden;
+}
+.worker-node.active {
+  border-color: var(--green); background: #001a07;
+  color: var(--green); box-shadow: 0 0 10px rgba(0,230,118,.4);
+}
+.worker-node.busy {
+  border-color: var(--amber); background: #1a0d00;
+  color: var(--amber); box-shadow: 0 0 10px var(--amber-dim);
+  animation: busy-pulse .8s ease-in-out infinite;
+}
+@keyframes busy-pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+.worker-node.done {
+  border-color: var(--cyan); background: var(--cyan-dark);
+  color: var(--cyan);
+}
+
+/* ── RUN BUTTON ── */
+.run-btn {
+  width: 100%; padding: 16px;
+  background: linear-gradient(135deg, #004d5a, #006677);
+  border: 1px solid var(--cyan);
+  color: var(--cyan); font-family: var(--mono); font-size: 14px; letter-spacing: 3px;
+  text-transform: uppercase; cursor: pointer;
+  border-radius: 3px; margin-top: 18px;
+  transition: all .2s; position: relative; overflow: hidden;
+}
+.run-btn::before {
+  content: '';
+  position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(0,212,255,.1), transparent);
+  transition: left .4s;
+}
+.run-btn:hover::before { left: 100%; }
+.run-btn:hover { background: linear-gradient(135deg, #006677, #007799); box-shadow: 0 0 20px var(--cyan-dim); }
+.run-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+.seq-toggle {
+  display: flex; align-items: center; gap: 10px; margin-top: 10px;
+  font-family: var(--mono); font-size: 11px; color: var(--text-dim); cursor: pointer;
+}
+.seq-toggle input { accent-color: var(--amber); }
+
+/* ── PROGRESS BAR ── */
+.progress-wrap { margin-top: 12px; display: none; }
+.progress-bar {
+  height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;
+}
+.progress-fill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, var(--cyan), var(--purple));
+  transition: width .3s; border-radius: 2px;
+}
+.progress-text { font-family: var(--mono); font-size: 10px; color: var(--text-dim); margin-top: 6px; }
+
+/* ── RIGHT PANE TABS ── */
+.tabs { display: flex; border-bottom: 1px solid var(--border); }
+.tab {
+  padding: 12px 20px; font-family: var(--mono); font-size: 11px; letter-spacing: 2px;
+  color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent;
+  transition: all .15s; text-transform: uppercase;
+}
+.tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+
+.tab-content { display: none; padding: 20px; }
+.tab-content.active { display: block; }
+
+/* ── IMAGE GRID ── */
+.image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.image-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; overflow: hidden;
+}
+.image-card-header {
+  padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono); font-size: 10px;
+}
+.image-card-name { color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+.image-card-pid { color: var(--amber); }
+.compare-wrap { display: flex; position: relative; }
+.compare-img { width: 50%; object-fit: cover; display: block; max-height: 180px; }
+.compare-divider {
+  position: absolute; top: 0; bottom: 0; left: 50%;
+  width: 2px; background: var(--cyan); box-shadow: 0 0 8px var(--cyan);
+}
+.compare-label {
+  position: absolute; top: 6px;
+  font-family: var(--mono); font-size: 9px; letter-spacing: 1px;
+  background: rgba(0,0,0,.7); padding: 2px 6px; border-radius: 2px;
+}
+.compare-label.before { left: 6px; color: var(--text-dim); }
+.compare-label.after  { right: 6px; color: var(--cyan); }
+.image-meta {
+  padding: 8px 12px; font-family: var(--mono); font-size: 10px;
+  display: flex; gap: 12px; color: var(--text-dim);
+}
+.image-meta span { color: var(--green); }
+.download-btn {
+  margin: 0 12px 10px; padding: 5px 10px;
+  background: none; border: 1px solid var(--border); color: var(--text-dim);
+  font-family: var(--mono); font-size: 10px; cursor: pointer; border-radius: 2px;
+  transition: all .15s;
+}
+.download-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+
+/* ── TIMING TABLE ── */
+.timing-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+.timing-table th {
+  text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border);
+  color: var(--text-dim); font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+}
+.timing-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text-primary); }
+.timing-table tr:last-child td { border-bottom: none; }
+.timing-bar-wrap { display: flex; align-items: center; gap: 8px; }
+.timing-bar { height: 6px; border-radius: 3px; background: var(--cyan); min-width: 4px; max-width: 200px; }
+.timing-ms { color: var(--green); white-space: nowrap; }
+
+/* ── SPEEDUP PANEL ── */
+.speedup-hero { text-align: center; padding: 20px; }
+.speedup-val { font-family: var(--mono); font-size: 64px; color: var(--cyan); line-height: 1; }
+.speedup-label { font-size: 12px; color: var(--text-dim); letter-spacing: 3px; margin-top: 4px; }
+.speedup-info { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 8px; }
+.speedup-info strong { color: var(--amber); }
+
+.chart-wrap { height: 280px; margin-top: 16px; position: relative; }
+
+/* ── PLACEHOLDER ── */
+.placeholder {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 300px; color: var(--text-ghost); font-family: var(--mono);
+  font-size: 12px; letter-spacing: 2px; gap: 12px;
+}
+.placeholder-icon { font-size: 48px; opacity: .3; }
+
+/* ── TOAST ── */
+.toast {
+  position: fixed; bottom: 24px; right: 24px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px;
+  padding: 12px 18px; font-family: var(--mono); font-size: 12px;
+  transform: translateY(80px); opacity: 0; transition: all .3s; z-index: 100;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.error { border-color: var(--red); color: var(--red); }
+.toast.success { border-color: var(--green); color: var(--green); }
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-void); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  .filter-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ── HEADER ── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon"></div>
+    <div>
+      <h1>PARALLEL VISION</h1>
+      <span>PDC IMAGE PROCESSING ENGINE</span>
+    </div>
+  </div>
+  <div class="header-stats">
+    <div class="stat">
+      <div class="stat-val" id="stat-omp">—</div>
+      <div class="stat-label">OMP Threads</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" id="stat-workers">4</div>
+      <div class="stat-label">Pool Workers</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" id="stat-speedup">—</div>
+      <div class="stat-label">Speedup</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Cloud services</div>
+      <div class="services" id="stat-services"><span class="svc" data-svc="db">RDS …</span><span class="svc" data-svc="s3">S3 …</span></div>
+    </div>
+    <div class="stat user-nav">
+      <a class="gallery-cta" href="{{ url_for('gallery') }}" title="Images stored in Amazon S3">
+        <span class="cta-ico">☁</span><span class="cta-text">MY GALLERY</span><span class="s3-badge">S3</span>
+      </a>
+      <div class="user-line">
+        <span class="user-email">{{ user_email }}</span>
+        <form method="post" action="{{ url_for('auth.logout') }}"><button type="submit">LOG OUT</button></form>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ── MAIN LAYOUT ── -->
+<div class="layout">
+
+  <!-- ══ LEFT: CONTROL PANEL ══ -->
+  <aside>
+    <div class="panel">
+      <div class="panel-header"><span class="dot"></span> CONTROL PANEL</div>
+      <div class="panel-body">
+
+        <!-- Drop zone -->
+        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+          <div class="icon">🖼️</div>
+          <p><strong>Drop images here</strong> or click to browse</p>
+          <p>PNG · JPG · WEBP · BMP</p>
+        </div>
+        <input type="file" id="file-input" multiple accept="image/*">
+        <div class="file-list" id="file-list"></div>
+
+        <!-- FILTERS -->
+        <div class="section-label">Filters</div>
+        <div class="filter-grid" id="filter-grid">
+          <label class="filter-card" data-filter="grayscale">
+            <input type="checkbox" value="grayscale">
+            <div class="filter-badge"></div>
+            <div class="filter-icon">⚫</div>
+            <div class="filter-name">Grayscale</div>
+          </label>
+          <label class="filter-card" data-filter="blur">
+            <input type="checkbox" value="blur">
+            <div class="filter-badge"></div>
+            <div class="filter-icon">🌫️</div>
+            <div class="filter-name">Blur</div>
+          </label>
+          <label class="filter-card" data-filter="edge_detection">
+            <input type="checkbox" value="edge_detection">
+            <div class="filter-badge"></div>
+            <div class="filter-icon">✏️</div>
+            <div class="filter-name">Edges</div>
+          </label>
+          <label class="filter-card" data-filter="brightness">
+            <input type="checkbox" value="brightness">
+            <div class="filter-badge"></div>
+            <div class="filter-icon">☀️</div>
+            <div class="filter-name">Brightness</div>
+          </label>
+          <label class="filter-card" data-filter="sharpen">
+            <input type="checkbox" value="sharpen">
+            <div class="filter-badge"></div>
+            <div class="filter-icon">🔪</div>
+            <div class="filter-name">Sharpen</div>
+          </label>
+          <label class="filter-card" data-filter="sepia">
+            <input type="checkbox" value="sepia">
+            <div class="filter-badge"></div>
+            <div class="filter-icon">🟤</div>
+            <div class="filter-name">Sepia</div>
+          </label>
+          <label class="filter-card" data-filter="invert">
+            <input type="checkbox" value="invert">
+            <div class="filter-badge"></div>
+            <div class="filter-icon">🔄</div>
+            <div class="filter-name">Invert</div>
+          </label>
+        </div>
+
+        <!-- Filter params -->
+        <div id="filter-params"></div>
+
+        <!-- AUGMENTATIONS -->
+        <div class="section-label">Data Augmentation</div>
+        <div class="aug-grid" id="aug-grid">
+          <label class="aug-card" data-aug="hflip">
+            <input type="checkbox" value="hflip">
+            <span class="aug-icon">↔️</span>
+            <div class="aug-name">H-Flip</div>
+          </label>
+          <label class="aug-card" data-aug="vflip">
+            <input type="checkbox" value="vflip">
+            <span class="aug-icon">↕️</span>
+            <div class="aug-name">V-Flip</div>
+          </label>
+          <label class="aug-card" data-aug="rotate90">
+            <input type="checkbox" value="rotate90">
+            <span class="aug-icon">🔃</span>
+            <div class="aug-name">Rotate 90°</div>
+          </label>
+          <label class="aug-card" data-aug="noise">
+            <input type="checkbox" value="noise">
+            <span class="aug-icon">📡</span>
+            <div class="aug-name">Noise</div>
+          </label>
+          <label class="aug-card" data-aug="color_jitter">
+            <input type="checkbox" value="color_jitter">
+            <span class="aug-icon">🎨</span>
+            <div class="aug-name">Color Jitter</div>
+          </label>
+          <label class="aug-card" data-aug="center_crop">
+            <input type="checkbox" value="center_crop">
+            <span class="aug-icon">✂️</span>
+            <div class="aug-name">Center Crop</div>
+          </label>
+        </div>
+
+        <!-- Aug params -->
+        <div id="aug-params"></div>
+
+        <!-- WORKER POOL -->
+        <div class="section-label">Worker Pool</div>
+        <div class="pool-config">
+          <div class="worker-count" id="worker-count-display">4</div>
+          <input type="range" id="worker-slider" min="1" max="8" value="4" style="flex:1">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">workers</span>
+        </div>
+        <div class="pool-viz" id="pool-viz"></div>
+
+        <label class="seq-toggle">
+          <input type="checkbox" id="seq-toggle" checked>
+          Also run sequential (for speedup chart)
+        </label>
+        <label class="cloud-save{% if not s3_enabled %} disabled{% endif %}" id="cloud-save">
+          <input type="checkbox" id="save-toggle" {% if s3_enabled %}checked{% else %}disabled{% endif %}>
+          <span class="cs-switch"></span>
+          <span class="cs-text">
+            <strong>☁ SAVE RESULTS TO MY CLOUD GALLERY</strong>
+            <small>{% if s3_enabled %}Stored privately in Amazon S3 · <code>{{ bucket }}</code> ({{ region }}){% else %}S3 is not configured (S3_BUCKET not set){% endif %}</small>
+          </span>
+        </label>
+
+        <!-- Progress -->
+        <div class="progress-wrap" id="progress-wrap">
+          <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+          <div class="progress-text" id="progress-text">Initializing workers…</div>
+        </div>
+
+        <button class="run-btn" id="run-btn" onclick="runProcess()">
+          ▶ LAUNCH PARALLEL JOB
+        </button>
+
+      </div>
+    </div>
+  </aside>
+
+  <!-- ══ RIGHT: RESULTS ══ -->
+  <main>
+    <div class="panel" style="min-height:500px">
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('results')">Results</div>
+        <div class="tab" onclick="switchTab('timing')">Timing</div>
+        <div class="tab" onclick="switchTab('speedup')">Speedup</div>
+        <div class="tab" onclick="switchTab('pool')">Pool Activity</div>
+      </div>
+
+      <!-- RESULTS TAB -->
+      <div class="tab-content active" id="tab-results">
+        <div class="placeholder" id="placeholder-results">
+          <div class="placeholder-icon">🖼️</div>
+          <div>Upload images and run a job to see results</div>
+        </div>
+        <div class="cloud-banner" id="cloud-banner"></div>
+        <div class="image-grid" id="image-grid" style="display:none"></div>
+      </div>
+
+      <!-- TIMING TAB -->
+      <div class="tab-content" id="tab-timing">
+        <div class="placeholder" id="placeholder-timing">
+          <div class="placeholder-icon">⏱️</div>
+          <div>No timing data yet</div>
+        </div>
+        <table class="timing-table" id="timing-table" style="display:none">
+          <thead>
+            <tr>
+              <th>Image</th>
+              <th>Worker PID</th>
+              <th>Total</th>
+              <th>Filter Breakdown</th>
+            </tr>
+          </thead>
+          <tbody id="timing-body"></tbody>
+        </table>
+      </div>
+
+      <!-- SPEEDUP TAB -->
+      <div class="tab-content" id="tab-speedup">
+        <div class="placeholder" id="placeholder-speedup">
+          <div class="placeholder-icon">📊</div>
+          <div>Enable "Also run sequential" to see speedup chart</div>
+        </div>
+        <div id="speedup-content" style="display:none">
+          <div class="speedup-hero">
+            <div class="speedup-val" id="speedup-val">—×</div>
+            <div class="speedup-label">SPEEDUP FACTOR</div>
+            <div class="speedup-info" id="speedup-info"></div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="speedup-chart"></canvas>
+          </div>
+          <div class="chart-wrap" style="height:200px;margin-top:12px">
+            <canvas id="perimage-chart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- POOL ACTIVITY TAB -->
+      <div class="tab-content" id="tab-pool">
+        <div class="placeholder" id="placeholder-pool">
+          <div class="placeholder-icon">⚙️</div>
+          <div>Pool activity will appear after first run</div>
+        </div>
+        <div id="pool-log" style="display:none;font-family:var(--mono);font-size:11px;color:var(--text-dim);line-height:1.8"></div>
+      </div>
+
+    </div>
+  </main>
+
+</div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════
+let selectedFiles = [];
+let speedupChart = null, perImageChart = null;
+let lastResults = null;
+
+// ── Init ──
+(async () => {
+  try {
+    const r = await fetch('/health');
+    const d = await r.json();
+    document.getElementById('stat-omp').textContent = d.omp_threads;
+  } catch(e) {}
+  renderPoolViz(4);
+  loadServiceStatus();
+})();
+
+async function loadServiceStatus() {
+  const set = (k, ok, label) => {
+    const el = document.querySelector(`.svc[data-svc="${k}"]`);
+    if (!el) return;
+    el.className = 'svc ' + (ok ? 'ok' : 'bad');
+    el.textContent = label + (ok ? ' ●' : ' ✕');
+  };
+  try {
+    const r = await fetch('/status');
+    const d = await r.json();
+    set('db', d.database && d.database.ok, d.database && d.database.engine === 'mysql' ? 'RDS' : 'DB');
+    set('s3', d.storage && d.storage.ok, 'S3');
+  } catch (e) { set('db', false, 'RDS'); set('s3', false, 'S3'); }
+}
+
+// ═══════════════════════════════════════════════════
+// FILE HANDLING
+// ═══════════════════════════════════════════════════
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  addFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', e => addFiles(e.target.files));
+
+function addFiles(files) {
+  for (const f of files) {
+    if (!f.type.startsWith('image/')) continue;
+    if (selectedFiles.find(x => x.name === f.name)) continue;
+    selectedFiles.push(f);
+  }
+  renderFileList();
+}
+
+function removeFile(name) {
+  selectedFiles = selectedFiles.filter(f => f.name !== name);
+  renderFileList();
+}
+
+function renderFileList() {
+  const list = document.getElementById('file-list');
+  list.innerHTML = '';
+  selectedFiles.forEach(f => {
+    const chip = document.createElement('div');
+    chip.className = 'file-chip';
+    const url = URL.createObjectURL(f);
+    chip.innerHTML = `
+      <img class="thumb" src="${url}">
+      <span class="file-chip-name">${f.name}</span>
+      <span style="color:var(--text-ghost);font-size:10px;margin-right:8px">${(f.size/1024).toFixed(0)}KB</span>
+      <button class="remove-btn" onclick="removeFile('${f.name}')">✕</button>`;
+    list.appendChild(chip);
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// FILTER / AUG CARDS
+// ═══════════════════════════════════════════════════
+const FILTER_PARAMS = {
+  blur:       { radius: { min:1, max:15, def:3, label:'Radius', step:1 } },
+  brightness: { factor: { min:0.2, max:3.0, def:1.3, label:'Factor', step:0.1 } },
+};
+const AUG_PARAMS = {
+  noise:        { std_dev:    { min:5,   max:80,  def:20,  label:'Std Dev',    step:1 } },
+  color_jitter: { saturation: { min:0.5, max:3.0, def:1.5, label:'Saturation', step:0.1 },
+                  brightness: { min:0.5, max:2.0, def:1.0, label:'Brightness', step:0.1 } },
+  center_crop:  { crop_pct:   { min:0.05,max:0.4, def:0.2, label:'Crop %',    step:0.05 } },
+};
+
+document.querySelectorAll('.filter-card').forEach(card => {
+  card.addEventListener('click', () => {
+    const cb = card.querySelector('input');
+    cb.checked = !cb.checked;
+    card.classList.toggle('active', cb.checked);
+    renderFilterParams();
+  });
+});
+
+document.querySelectorAll('.aug-card').forEach(card => {
+  card.addEventListener('click', () => {
+    const cb = card.querySelector('input');
+    cb.checked = !cb.checked;
+    card.classList.toggle('active', cb.checked);
+    renderAugParams();
+  });
+});
+
+function renderFilterParams() {
+  const wrap = document.getElementById('filter-params');
+  wrap.innerHTML = '';
+  document.querySelectorAll('.filter-card.active').forEach(card => {
+    const name = card.dataset.filter;
+    const params = FILTER_PARAMS[name];
+    if (!params) return;
+    Object.entries(params).forEach(([key, cfg]) => {
+      const row = document.createElement('div');
+      row.className = 'param-row';
+      const id = `fp-${name}-${key}`;
+      row.innerHTML = `
+        <label>${cfg.label}</label>
+        <input type="range" id="${id}" min="${cfg.min}" max="${cfg.max}" step="${cfg.step}" value="${cfg.def}"
+               oninput="document.getElementById('${id}-v').textContent=this.value">
+        <span class="param-val" id="${id}-v">${cfg.def}</span>`;
+      wrap.appendChild(row);
+    });
+  });
+}
+
+function renderAugParams() {
+  const wrap = document.getElementById('aug-params');
+  wrap.innerHTML = '';
+  document.querySelectorAll('.aug-card.active').forEach(card => {
+    const name = card.dataset.aug;
+    const params = AUG_PARAMS[name];
+    if (!params) return;
+    Object.entries(params).forEach(([key, cfg]) => {
+      const row = document.createElement('div');
+      row.className = 'param-row';
+      const id = `ap-${name}-${key}`;
+      row.innerHTML = `
+        <label>${cfg.label}</label>
+        <input type="range" id="${id}" min="${cfg.min}" max="${cfg.max}" step="${cfg.step}" value="${cfg.def}"
+               oninput="document.getElementById('${id}-v').textContent=this.value">
+        <span class="param-val" id="${id}-v">${cfg.def}</span>`;
+      wrap.appendChild(row);
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// WORKER POOL VIZ
+// ═══════════════════════════════════════════════════
+const workerSlider = document.getElementById('worker-slider');
+workerSlider.addEventListener('input', () => {
+  const n = parseInt(workerSlider.value);
+  document.getElementById('worker-count-display').textContent = n;
+  document.getElementById('stat-workers').textContent = n;
+  renderPoolViz(n);
+});
+
+function renderPoolViz(n) {
+  const viz = document.getElementById('pool-viz');
+  viz.innerHTML = '';
+  for (let i = 0; i < n; i++) {
+    const node = document.createElement('div');
+    node.className = 'worker-node';
+    node.id = `wnode-${i}`;
+    node.textContent = `W${i}`;
+    viz.appendChild(node);
+  }
+}
+
+function animateWorkers(results, n) {
+  const nodes = document.querySelectorAll('.worker-node');
+  nodes.forEach(n => n.className = 'worker-node active');
+  const delay = 200;
+  results.forEach((r, i) => {
+    const wIdx = i % n;
+    setTimeout(() => {
+      const nd = document.getElementById(`wnode-${wIdx}`);
+      if (nd) { nd.className = 'worker-node busy'; nd.textContent = `W${wIdx} ✦`; }
+    }, i * delay);
+    setTimeout(() => {
+      const nd = document.getElementById(`wnode-${wIdx}`);
+      if (nd) { nd.className = 'worker-node done'; nd.textContent = `W${wIdx} ✓`; }
+    }, i * delay + (r.total_ms || 300));
+  });
+  setTimeout(() => {
+    nodes.forEach((nd, i) => { nd.className = 'worker-node active'; nd.textContent = `W${i}`; });
+  }, results.length * delay + 1500);
+}
+
+// ═══════════════════════════════════════════════════
+// BUILD CONFIG
+// ═══════════════════════════════════════════════════
+function getConfig() {
+  const filters = [];
+  document.querySelectorAll('.filter-card.active').forEach(card => {
+    const name = card.dataset.filter;
+    const obj = { name };
+    const params = FILTER_PARAMS[name];
+    if (params) {
+      Object.keys(params).forEach(key => {
+        const el = document.getElementById(`fp-${name}-${key}`);
+        if (el) obj[key] = parseFloat(el.value);
+      });
+    }
+    filters.push(obj);
+  });
+
+  const augmentations = [];
+  document.querySelectorAll('.aug-card.active').forEach(card => {
+    const name = card.dataset.aug;
+    const obj = { name };
+    if (name === 'rotate90') obj.direction = 1;
+    const params = AUG_PARAMS[name];
+    if (params) {
+      Object.keys(params).forEach(key => {
+        const el = document.getElementById(`ap-${name}-${key}`);
+        if (el) obj[key] = parseFloat(el.value);
+      });
+    }
+    augmentations.push(obj);
+  });
+
+  return {
+    filters,
+    augmentations,
+    n_workers: parseInt(workerSlider.value),
+    run_sequential: document.getElementById('seq-toggle').checked,
+    save_to_cloud: document.getElementById('save-toggle').checked,
+  };
+}
+
+// ═══════════════════════════════════════════════════
+// MAIN: RUN JOB
+// ═══════════════════════════════════════════════════
+const MAX_UPLOAD_MB = 50, MAX_IMAGES = 20;
+let previewUrls = [];   // object URLs for the "before" images (no need to download originals again)
+
+function postJob(fd, onUploadProgress, onUploadDone) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/process');
+    xhr.timeout = 180000;
+    xhr.upload.onprogress = e => { if (e.lengthComputable) onUploadProgress(e.loaded / e.total); };
+    xhr.upload.onload = onUploadDone;
+    xhr.onload = () => {
+      let data = null;
+      try { data = JSON.parse(xhr.responseText); } catch (_) {}
+      resolve({ status: xhr.status, data });
+    };
+    xhr.onerror = () => reject(new Error('network'));
+    xhr.ontimeout = () => reject(new Error('timeout'));
+    xhr.send(fd);
+  });
+}
+
+function explainFailure(status, data) {
+  if (data && data.error) return data.error + (data.ref ? ` (ref ${data.ref})` : '');
+  switch (status) {
+    case 413: return `The upload is too large (limit ${MAX_UPLOAD_MB} MB per job). Use fewer or smaller images.`;
+    case 502: case 503: case 504: return 'The server is busy or restarting. Wait a few seconds and try again.';
+    case 0: return 'Could not reach the server. Check your connection.';
+    default: return `Unexpected server response (${status}). Try again; if it keeps happening, check the server log.`;
+  }
+}
+
+async function runProcess() {
+  if (!selectedFiles.length) { showToast('Upload at least one image!', 'error'); return; }
+  const config = getConfig();
+  if (!config.filters.length && !config.augmentations.length) {
+    showToast('Select at least one filter or augmentation!', 'error'); return;
+  }
+  // Check limits BEFORE uploading: on a slow connection this saves a long wasted upload.
+  const totalMB = selectedFiles.reduce((n, f) => n + f.size, 0) / 1048576;
+  if (selectedFiles.length > MAX_IMAGES) { showToast(`Maximum ${MAX_IMAGES} images per job.`, 'error'); return; }
+  if (totalMB > MAX_UPLOAD_MB) {
+    showToast(`Selected images total ${totalMB.toFixed(1)} MB; the limit is ${MAX_UPLOAD_MB} MB per job.`, 'error'); return;
+  }
+
+  const runFiles = [...selectedFiles];
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true; btn.textContent = '⟳ UPLOADING…';
+
+  const pw = document.getElementById('progress-wrap');
+  pw.style.display = 'block';
+  const pf = document.getElementById('progress-fill');
+  const pt = document.getElementById('progress-text');
+  pf.style.width = '0';
+  pt.textContent = `Uploading ${runFiles.length} image(s), ${totalMB.toFixed(1)} MB…`;
+
+  let tick = null, ok = false;
+  const startProcessingAnimation = () => {
+    btn.textContent = '⟳ PROCESSING…';
+    let prog = 40;
+    tick = setInterval(() => {
+      prog = Math.min(prog + Math.random() * 6, 90);
+      pf.style.width = prog + '%';
+      pt.textContent = `Worker pool processing on the server… ${Math.round(prog)}%`;
+    }, 250);
+  };
+
+  try {
+    const fd = new FormData();
+    runFiles.forEach(f => fd.append('images[]', f));
+    fd.append('config', JSON.stringify(config));
+
+    const { status, data } = await postJob(
+      fd,
+      frac => { pf.style.width = (frac * 40) + '%'; pt.textContent = `Uploading… ${Math.round(frac * 100)}%`; },
+      startProcessingAnimation
+    );
+    clearInterval(tick);
+
+    if (status === 401) { window.location = '/login'; return; }
+    if (status !== 200 || !data || data.error) { showToast(explainFailure(status, data), 'error'); return; }
+
+    pf.style.width = '100%'; pt.textContent = 'Done!';
+    ok = true;
+    lastResults = data;
+    renderResults(data, runFiles);
+    renderTiming(data);
+    renderSpeedup(data);
+    renderPoolLog(data);
+    animateWorkers(data.parallel.results, data.parallel.workers);
+    if (data.speedup) document.getElementById('stat-speedup').textContent = data.speedup + '×';
+
+    let msg = `✓ ${data.parallel.results.length} images processed in ${data.parallel.wall_ms}ms`;
+    if (data.saved) msg += ` · ${data.saved} saved to S3`;
+    if (data.parallel.workers < data.workers_requested) {
+      msg += ` · workers limited to ${data.parallel.workers} to avoid running out of memory`;
+    }
+    showToast(msg, data.save_error ? 'error' : 'success');
+  } catch (e) {
+    clearInterval(tick);
+    showToast(e.message === 'timeout'
+      ? 'The job took longer than 3 minutes and was abandoned. Try fewer or smaller images.'
+      : 'Could not reach the server. Check your connection and try again.', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '▶ LAUNCH PARALLEL JOB';
+    setTimeout(() => { pw.style.display = 'none'; pf.style.width = '0'; }, ok ? 1500 : 200);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// RENDER RESULTS
+// ═══════════════════════════════════════════════════
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderCloudBanner(data) {
+  const el = document.getElementById('cloud-banner');
+  if (data.saved) {
+    const st = data.storage || {};
+    el.className = 'cloud-banner';
+    el.innerHTML = `<div class="cb-ico">☁</div>
+      <div class="cb-main"><strong>${data.saved} IMAGE${data.saved > 1 ? 'S' : ''} SAVED TO AMAZON S3</strong><br>
+        bucket <b>${esc(st.bucket || '')}</b> · ${esc(st.region || '')}${data.save_ms ? ` · uploaded in ${data.save_ms}ms` : ''}</div>
+      <a href="/gallery">OPEN MY GALLERY →</a>`;
+    el.style.display = 'flex';
+  } else if (data.save_error) {
+    el.className = 'cloud-banner error';
+    el.innerHTML = `<div class="cb-ico">⚠</div><div class="cb-main"><strong>NOT SAVED TO S3</strong><br>${esc(data.save_error)}</div>`;
+    el.style.display = 'flex';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function renderResults(data, files) {
+  document.getElementById('placeholder-results').style.display = 'none';
+  const grid = document.getElementById('image-grid');
+  grid.style.display = 'grid';
+  grid.innerHTML = '';
+  renderCloudBanner(data);
+
+  previewUrls.forEach(u => URL.revokeObjectURL(u));
+  previewUrls = files.map(f => URL.createObjectURL(f));
+
+  data.parallel.results.forEach((r, i) => {
+    const after = 'data:image/jpeg;base64,' + (r.preview_b64 || r.result_b64);
+    const download = r.download_url
+      ? `<a class="download-btn" href="${esc(r.download_url)}">⬇ Download full-size</a>`
+      : `<button class="download-btn" data-dl="${i}">⬇ Download</button>`;
+    const chip = r.s3_key ? `<div class="s3-chip" title="${esc(r.s3_key)}">☁ S3 · ${esc(r.s3_key)}</div>` : '';
+    const card = document.createElement('div');
+    card.className = 'image-card';
+    card.innerHTML = `
+      <div class="image-card-header">
+        <span class="image-card-name" title="${esc(r.image_name)}">${esc(r.image_name)}</span>
+        <span class="image-card-pid">PID:${r.pid}</span>
+      </div>
+      <div class="compare-wrap">
+        <img class="compare-img" src="${previewUrls[i]}" alt="before" decoding="async">
+        <img class="compare-img" src="${after}" alt="after" decoding="async">
+        <div class="compare-divider"></div>
+        <span class="compare-label before">ORIG</span>
+        <span class="compare-label after">OUT</span>
+      </div>
+      <div class="image-meta">
+        <span>⏱</span> <span>${r.total_ms}ms</span>
+        <span>📐</span> <span>${r.out_w}×${r.out_h}</span>
+      </div>
+      ${chip}
+      ${download}`;
+    grid.appendChild(card);
+  });
+}
+
+// Download buttons for results that were NOT saved to S3 (full image is in the response)
+document.getElementById('image-grid').addEventListener('click', e => {
+  const btn = e.target.closest('[data-dl]');
+  if (!btn || !lastResults) return;
+  const r = lastResults.parallel.results[+btn.dataset.dl];
+  const stem = r.image_name.replace(/\.[^.]+$/, '') || 'image';
+  const a = document.createElement('a');
+  a.href = 'data:image/jpeg;base64,' + r.result_b64;
+  a.download = `processed_${stem}.jpg`;
+  a.click();
+});
+
+// ═══════════════════════════════════════════════════
+// RENDER TIMING
+// ═══════════════════════════════════════════════════
+function renderTiming(data) {
+  document.getElementById('placeholder-timing').style.display = 'none';
+  const table = document.getElementById('timing-table');
+  table.style.display = 'table';
+  const tbody = document.getElementById('timing-body');
+  tbody.innerHTML = '';
+
+  const maxMs = Math.max(...data.parallel.results.map(r => r.total_ms), 1);
+
+  data.parallel.results.forEach(r => {
+    const breakdown = Object.entries({...r.filter_times, ...r.aug_times})
+      .map(([k,v]) => `<span style="color:var(--cyan)">${k}</span>: <span style="color:var(--green)">${v}ms</span>`)
+      .join(' · ') || '—';
+    const barW = Math.round((r.total_ms / maxMs) * 160);
+    tbody.innerHTML += `
+      <tr>
+        <td style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">${r.image_name}</td>
+        <td style="color:var(--amber)">${r.pid}</td>
+        <td>
+          <div class="timing-bar-wrap">
+            <div class="timing-bar" style="width:${barW}px"></div>
+            <span class="timing-ms">${r.total_ms}ms</span>
+          </div>
+        </td>
+        <td style="font-size:10px;font-family:var(--mono)">${breakdown}</td>
+      </tr>`;
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// RENDER SPEEDUP
+// ═══════════════════════════════════════════════════
+function renderSpeedup(data) {
+  const ph = document.getElementById('placeholder-speedup');
+  const cnt = document.getElementById('speedup-content');
+
+  if (!data.sequential) { ph.style.display='flex'; cnt.style.display='none'; return; }
+
+  ph.style.display = 'none'; cnt.style.display = 'block';
+  document.getElementById('speedup-val').textContent = (data.speedup || 1) + '×';
+  document.getElementById('speedup-info').innerHTML =
+    `Sequential: <strong>${data.sequential.wall_ms}ms</strong> → Parallel (${data.parallel.workers}w): <strong>${data.parallel.wall_ms}ms</strong>`;
+
+  // Bar chart: seq vs parallel
+  if (speedupChart) speedupChart.destroy();
+  const ctx1 = document.getElementById('speedup-chart').getContext('2d');
+  speedupChart = new Chart(ctx1, {
+    type: 'bar',
+    data: {
+      labels: ['Sequential (1 worker)', `Parallel (${data.parallel.workers} workers)`],
+      datasets: [{
+        label: 'Wall Time (ms)',
+        data: [data.sequential.wall_ms, data.parallel.wall_ms],
+        backgroundColor: ['rgba(255,179,0,0.3)', 'rgba(0,212,255,0.3)'],
+        borderColor: ['#ffb300', '#00d4ff'],
+        borderWidth: 2, borderRadius: 3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#5a7a99', font: { family: 'Space Mono', size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#5a7a99', font: { family: 'Space Mono', size: 10 } }, grid: { color: '#1e2d3d' } },
+        y: { ticks: { color: '#5a7a99', font: { family: 'Space Mono', size: 10 } }, grid: { color: '#1e2d3d' } }
+      }
+    }
+  });
+
+  // Per-image bar
+  if (perImageChart) perImageChart.destroy();
+  const names = data.parallel.results.map(r => r.image_name.split('.')[0].substring(0,12));
+  const pTimes = data.parallel.results.map(r => r.total_ms);
+  const sTimes = data.sequential.results.map(r => r.total_ms);
+  const ctx2 = document.getElementById('perimage-chart').getContext('2d');
+  perImageChart = new Chart(ctx2, {
+    type: 'bar',
+    data: {
+      labels: names,
+      datasets: [
+        { label: 'Sequential', data: sTimes, backgroundColor: 'rgba(255,179,0,0.25)', borderColor: '#ffb300', borderWidth: 1, borderRadius: 2 },
+        { label: 'Parallel',   data: pTimes, backgroundColor: 'rgba(0,212,255,0.25)', borderColor: '#00d4ff', borderWidth: 1, borderRadius: 2 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#5a7a99', font: { family: 'Space Mono', size: 11 } } }, title: { display: true, text: 'Per-Image Processing Time (ms)', color: '#5a7a99', font: { family: 'Space Mono', size: 11 } } },
+      scales: {
+        x: { ticks: { color: '#5a7a99', font: { family: 'Space Mono', size: 9 } }, grid: { color: '#1e2d3d' } },
+        y: { ticks: { color: '#5a7a99', font: { family: 'Space Mono', size: 9 } }, grid: { color: '#1e2d3d' } }
+      }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// POOL LOG
+// ═══════════════════════════════════════════════════
+function renderPoolLog(data) {
+  document.getElementById('placeholder-pool').style.display = 'none';
+  const log = document.getElementById('pool-log');
+  log.style.display = 'block';
+  const n = data.parallel.workers;
+  log.innerHTML = `<div style="color:var(--cyan);margin-bottom:8px">> Pool initialised with ${n} worker process(es). OMP threads/worker: ${data.omp_threads}</div>`;
+
+  const pidColors = {};
+  const palette = ['#00d4ff','#00e676','#ffb300','#b388ff','#ff6e40','#40c4ff','#69f0ae','#ffff00'];
+  let ci = 0;
+
+  data.parallel.results.forEach((r, i) => {
+    if (!pidColors[r.pid]) pidColors[r.pid] = palette[ci++ % palette.length];
+    const col = pidColors[r.pid];
+    const filters = Object.entries(r.filter_times).map(([k,v])=>`${k}(${v}ms)`).join(', ') || '—';
+    const augs    = Object.entries(r.aug_times).map(([k,v])=>`${k}(${v}ms)`).join(', ') || '—';
+    log.innerHTML += `
+      <div style="margin:4px 0;padding:6px 10px;background:var(--bg-card);border-left:3px solid ${col};border-radius:0 3px 3px 0">
+        <span style="color:${col}">WORKER PID:${r.pid}</span>
+        <span style="color:var(--text-ghost)"> → </span>
+        <span style="color:var(--text-primary)">${r.image_name}</span>
+        <span style="color:var(--text-dim)"> [${r.total_ms}ms total · filters: ${filters} · augs: ${augs}]</span>
+        <span style="color:var(--green)"> ✓ DONE → returned to pool</span>
+      </div>`;
+  });
+
+  const wall = data.parallel.wall_ms;
+  log.innerHTML += `<div style="color:var(--green);margin-top:8px">> All tasks completed. Wall time: ${wall}ms. Workers idle — ready for next batch.</div>`;
+}
+
+// ═══════════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════════
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ═══════════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════════
+function showToast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = `toast ${type} show`;
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.className = 'toast', type === 'error' ? 7000 : 3500);
+}
+</script>
+</body>
+</html>

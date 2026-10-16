@@ -1,0 +1,10 @@
+.env
+*.pem
+local.db
+__pycache__/
+*.pyc
+venv/
+.venv/
+libfilters.so
+*.zip
+instance/

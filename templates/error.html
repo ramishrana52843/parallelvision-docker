@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Error {{ status }} — ParallelVision{% endblock %}
+{% block body %}
+<header class="top"><div class="brand">PARALLEL VISION<small>PDC IMAGE PROCESSING ENGINE</small></div></header>
+<div class="card auth-card">
+  <h2>{% if status == 503 %}SERVICE UNAVAILABLE{% elif status == 404 %}NOT FOUND{% elif status == 413 %}UPLOAD TOO LARGE{% else %}SOMETHING WENT WRONG{% endif %}</h2>
+  <p class="sub">{{ message }}</p>
+  {% if ref %}<p class="sub">Reference: <code>{{ ref }}</code> (search the server log for this code)</p>{% endif %}
+  <a class="btn solid" style="display:block;text-align:center;margin-top:18px;padding:12px" href="{{ url_for('index') }}">BACK TO THE APP</a>
+</div>
+{% endblock %}

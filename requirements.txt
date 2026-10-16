@@ -1,0 +1,8 @@
+flask>=3.0
+flask-sqlalchemy>=3.1
+pymysql>=1.1
+cryptography>=42.0
+boto3>=1.34
+pillow>=10.0
+numpy>=1.26
+gunicorn>=22.0

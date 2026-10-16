@@ -1,0 +1,75 @@
+# ParallelVision - Part II (Jenkins) stack
+#
+# Derived from docker-compose.yml with the changes the assignment asks for:
+#   1. NO Dockerfile / custom image: a stock python image is used and the CODE is
+#      attached as a VOLUME (the Jenkins workspace, mounted read-only).
+#   2. Different container names (pvci_*), host ports (8081 / 3307) and volume name,
+#      so this stack can run next to the Part I stack on the same server.
+#
+# Jenkins starts it with:   docker compose -f docker-compose.ci.yml up -d
+
+name: pvci
+
+services:
+  db:
+    image: mysql:8.4
+    container_name: pvci_db                     # different name
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?missing MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-parallelvision}
+      MYSQL_USER: ${MYSQL_USER:-appuser}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?missing MYSQL_PASSWORD}
+    command:
+      - --performance-schema=OFF
+      - --innodb-buffer-pool-size=128M
+      - --max-connections=50
+    volumes:
+      - pvci_mysql_data:/var/lib/mysql          # different volume name
+    ports:
+      - "127.0.0.1:3307:3306"                   # different host port
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  web:
+    image: python:3.12                          # stock image: no Dockerfile written
+    container_name: pvci_web                    # different name
+    restart: unless-stopped
+    working_dir: /app
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./:/app:ro                              # THE CODE, attached as a read-only volume
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?missing SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET:-}
+      AWS_REGION: ${AWS_REGION:-eu-north-1}
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-appuser}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-parallelvision}
+      FILTERS_LIB: /tmp/libfilters.so           # compiled inside the container, not in the volume
+      PYTHONDONTWRITEBYTECODE: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    # No image was built, so the container installs the packages and compiles the
+    # C++ library itself at start-up (this is why it takes about a minute to start).
+    command:
+      - sh
+      - -c
+      - |
+        pip install --no-cache-dir --root-user-action=ignore -r requirements.txt &&
+        g++ -O3 -fopenmp -shared -fPIC -o /tmp/libfilters.so cpp/filters.cpp -lm &&
+        exec gunicorn --bind 0.0.0.0:8000 --workers 2 --timeout 120 application:application
+    ports:
+      - "8081:8000"                             # different host port
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+
+volumes:
+  pvci_mysql_data:
