@@ -6,6 +6,8 @@
 #   2. Different container names (pvci_*), host ports (8081 / 3307) and volume name,
 #      so this stack can run next to the Part I stack on the same server.
 #
+# Ports are written out in full (host : container):  web 8081 -> 8000,  db 3307 -> 3306
+#
 # Jenkins starts it with:   docker compose -f docker-compose.ci.yml up -d
 
 name: pvci
@@ -17,8 +19,8 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?missing MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-parallelvision}
-      MYSQL_USER: ${MYSQL_USER:-appuser}
+      MYSQL_DATABASE: parallelvision
+      MYSQL_USER: appuser
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?missing MYSQL_PASSWORD}
     command:
       - --performance-schema=OFF
@@ -27,7 +29,7 @@ services:
     volumes:
       - pvci_mysql_data:/var/lib/mysql          # different volume name
     ports:
-      - "127.0.0.1:3307:3306"                   # different host port
+      - "3307:3306"                             # different host port (the security group keeps it closed)
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 10s
@@ -49,7 +51,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:?missing SECRET_KEY}
       S3_BUCKET: ${S3_BUCKET:-}
       AWS_REGION: ${AWS_REGION:-eu-north-1}
-      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-appuser}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-parallelvision}
+      DATABASE_URL: mysql+pymysql://appuser:${MYSQL_PASSWORD}@db:3306/parallelvision
       FILTERS_LIB: /tmp/libfilters.so           # compiled inside the container, not in the volume
       PYTHONDONTWRITEBYTECODE: "1"
       PIP_DISABLE_PIP_VERSION_CHECK: "1"

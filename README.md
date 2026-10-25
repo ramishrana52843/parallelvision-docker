@@ -26,6 +26,8 @@ docker compose ps
 ```
 Open `http://SERVER_IP/`. Data check: `docker compose down` then `docker compose up -d` - your account is still there.
 
+**Before you push to GitHub:** in `docker-compose.yml` replace `YOUR_DOCKERHUB_USER` with your Docker Hub username (the image name must match the one on Docker Hub).
+
 ## Part II quick start
 
 Jenkins builds from GitHub using the `Jenkinsfile`; the CI stack answers on `http://SERVER_IP:8081/`.
@@ -34,7 +36,13 @@ See the step-by-step guide for the Jenkins installation, credentials and webhook
 | | Part I | Part II |
 |---|---|---|
 | Containers | `pv_web`, `pv_db` | `pvci_web`, `pvci_db` |
-| Website port | 80 | 8081 |
-| Database port (localhost only) | 3306 | 3307 |
+| Website port (host : container) | 80 : 8000 | 8081 : 8000 |
+| Database port (host : container) | 3308 : 3306 | 3307 : 3306 |
 | Database volume | `pv_mysql_data` | `pvci_mysql_data` |
 | App code comes from | the Docker image | a volume (the Jenkins workspace) |
+
+## What the Jenkins pipeline e-mails
+
+After every build `sendBuildEmail()` (end of the `Jenkinsfile`) e-mails the result to the author of the pushed commit.
+Needs: SMTP set up in Manage Jenkins > System > E-mail Notification, and optionally the global properties
+`FALLBACK_EMAIL` (used when the commit address is a GitHub noreply address) and `OWNER_EMAIL` (gets a copy).

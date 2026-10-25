@@ -9,6 +9,7 @@
 //   3. starts the database + web containers with docker-compose.ci.yml
 //      (the code is attached to the web container as a volume)
 //   4. proves the stack works: health check, then the tables in the MySQL container
+//   5. e-mails the build result to the person who made the push (see sendBuildEmail below)
 //
 // Secrets are NOT in this file. They come from Jenkins credentials (IDs below).
 
@@ -33,6 +34,8 @@ pipeline {
         // S3_BUCKET / AWS_REGION: Manage Jenkins > System > Global properties > Environment variables
         S3_BUCKET    = "${env.S3_BUCKET ?: ''}"
         AWS_REGION   = "${env.AWS_REGION ?: 'eu-north-1'}"
+        // Also global properties: FALLBACK_EMAIL (used if the commit address is unusable)
+        // and OWNER_EMAIL (gets a copy of every result mail). Both are optional.
     }
 
     stages {
@@ -134,6 +137,9 @@ pipeline {
     post {
         always {
             sh 'docker ps --filter "name=pvci_" --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}" || true'
+            script {
+                sendBuildEmail()
+            }
         }
         success {
             echo 'BUILD OK - the web app is running at http://<server-ip>:8081/'
@@ -142,5 +148,55 @@ pipeline {
             sh 'docker logs --tail 80 pvci_web || true'
             echo 'BUILD FAILED - read the stage that is red, and the container log above.'
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// E-mail the build result to the person who made the push.
+//   * recipient = the author address of the commit that was just built
+//   * if that address is missing or a GitHub "noreply" address, FALLBACK_EMAIL is used
+//   * OWNER_EMAIL (optional) gets a copy
+// SMTP is configured once in Manage Jenkins > System > E-mail Notification.
+// A problem with e-mail never changes the build result.
+// ---------------------------------------------------------------------------
+def sendBuildEmail() {
+    def author  = sh(script: 'git log -1 --pretty=format:%ae || true', returnStdout: true).trim()
+    def pusher  = sh(script: 'git log -1 --pretty=format:%an || true', returnStdout: true).trim()
+    def commit  = sh(script: 'git log -1 --pretty=format:%h || true',  returnStdout: true).trim()
+    def message = sh(script: 'git log -1 --pretty=format:%s || true',  returnStdout: true).trim()
+
+    def recipient = author
+    if (!recipient || recipient.endsWith('noreply.github.com')) {
+        recipient = env.FALLBACK_EMAIL ?: ''
+    }
+    if (!recipient) {
+        echo 'E-mail skipped: no commit author address and FALLBACK_EMAIL is not set.'
+        return
+    }
+
+    def result  = currentBuild.currentResult
+    def subject = "[ParallelVision CI] ${result}: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+    def body = """Build result: ${result}
+
+Job:        ${env.JOB_NAME}
+Build:      #${env.BUILD_NUMBER}
+Commit:     ${commit} - ${message}
+Pushed by:  ${pusher} <${author}>
+
+Build page:     ${env.BUILD_URL}
+Console output: ${env.BUILD_URL}console
+
+On success the web application is running on port 8081 of the Jenkins server.
+"""
+
+    try {
+        if (env.OWNER_EMAIL) {
+            mail to: recipient, cc: env.OWNER_EMAIL, subject: subject, body: body
+        } else {
+            mail to: recipient, subject: subject, body: body
+        }
+        echo "Build result e-mailed to ${recipient}"
+    } catch (err) {
+        echo "Could not send the e-mail: ${err}"
     }
 }

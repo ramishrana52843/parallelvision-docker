@@ -6,7 +6,12 @@
 #   docker compose down         stop and remove the containers (the DATA is kept)
 #   docker compose down -v      ...and also delete the database volume (DATA IS LOST)
 #
-# Values like ${MYSQL_PASSWORD} are read from the file named ".env" (see .env.example).
+# Passwords are read from the file named ".env" (see .env.example), never written here.
+#
+# Ports are written out in full ON PURPOSE (no variables), so anyone reading this file
+# can see exactly which port each service uses. Host port : container port
+#     web   80   -> 8000
+#     db    3308 -> 3306
 
 name: parallelvision
 
@@ -18,8 +23,8 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-parallelvision}
-      MYSQL_USER: ${MYSQL_USER:-appuser}
+      MYSQL_DATABASE: parallelvision
+      MYSQL_USER: appuser
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
     # keep MySQL small enough for a small EC2 instance
     command:
@@ -31,8 +36,7 @@ services:
       # so the data survives when the container is removed or recreated.
       - pv_mysql_data:/var/lib/mysql
     ports:
-      # published on the server itself only (127.0.0.1), not on the internet
-      - "127.0.0.1:${DB_HOST_PORT:-3306}:3306"
+      - "3308:3306"          # database reachable from outside on port 3308
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 10s
@@ -43,7 +47,8 @@ services:
   # ------------------------------------------------------------ web app
   web:
     # the image built from the Dockerfile and pushed to Docker Hub
-    image: ${DOCKERHUB_USER:?set DOCKERHUB_USER in .env}/parallelvision:${IMAGE_TAG:-1.0}
+    # (replace ramish52843 with your Docker Hub username)
+    image: ramish52843/parallelvision:1.0
     container_name: pv_web
     restart: unless-stopped
     depends_on:
@@ -54,9 +59,9 @@ services:
       S3_BUCKET: ${S3_BUCKET:-}
       AWS_REGION: ${AWS_REGION:-eu-north-1}
       # "db" is the service name above: containers reach each other by that name
-      DATABASE_URL: mysql+pymysql://${MYSQL_USER:-appuser}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-parallelvision}
+      DATABASE_URL: mysql+pymysql://appuser:${MYSQL_PASSWORD}@db:3306/parallelvision
     ports:
-      - "${WEB_PORT:-80}:8000"         # host port : container port
+      - "80:8000"                # website reachable from outside on port 80
 
 # declares the named volume used above
 volumes:
