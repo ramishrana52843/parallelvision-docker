@@ -1,4 +1,4 @@
-# ParallelVision  (Assignment 2)
+# ParallelVision  (Assignment 2 CI)
 
 Flask + gunicorn image-processing app with a C++/OpenMP filter library, MySQL, and S3 storage.
 
