@@ -25,7 +25,7 @@ LABEL org.opencontainers.image.title="ParallelVision" \
       org.opencontainers.image.source="https://github.com/ramishrana52843/parallelvision-docker"
 
 # PYTHONUNBUFFERED: logs appear immediately in `docker logs`
-# PYTHONDONTWRITEBYTECODE: do not create .pyc files inside the container
+# PYTHONDONTWRITEBYTECODE: do not create any .pyc files inside the container
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
