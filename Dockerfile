@@ -22,7 +22,7 @@ FROM python:3.12-slim
 
 LABEL org.opencontainers.image.title="ParallelVision" \
       org.opencontainers.image.description="Parallel image-processing web app (Flask + gunicorn + C++/OpenMP)" \
-      org.opencontainers.image.source="https://github.com/<your-github-user>/<your-repo>"
+      org.opencontainers.image.source="https://github.com/ramishrana52843/parallelvision-docker"
 
 # PYTHONUNBUFFERED: logs appear immediately in `docker logs`
 # PYTHONDONTWRITEBYTECODE: do not create .pyc files inside the container
